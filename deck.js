@@ -5153,10 +5153,10 @@ void main() {
     var plMesh = new ce(new Ri(2 * HE.HX, 2 * HE.HY), new Ks({ map: plTex, transparent: !0, opacity: 0.42, depthWrite: !1 }));
     plMesh.position.z = 0.008; ENVG.add(plMesh); ENVG.visible = !1; xe.world.add(ENVG);
     function envAt(x, y) { let c = Math.floor((x + HE.HX) / HE.CELL), r = Math.floor((y + HE.HY) / HE.CELL); return c < 0 || r < 0 || c >= HE.NX || r >= HE.NY ? 0.5 : envV[r * HE.NX + c]; }
-    function envDraw(loc, nofade) {
+    function envDraw(loc, nofade, light) {
       let d = envImg.data, NX = HE.NX, NY = HE.NY;
       for (let r = 0; r < NY; r++) for (let c = 0; c < NX; c++) {
-        let x = -HE.HX + (c + 0.5) * HE.CELL, y = -HE.HY + (r + 0.5) * HE.CELL, v = 0.34 + 0.42 * envV[r * NX + c], rr = Math.hypot(x, y * 1.15), al = nofade ? 1 - sm((Math.abs(x) - 17) / 3) : 1 - sm((rr - 4.8) / 4.2);
+        let x = -HE.HX + (c + 0.5) * HE.CELL, y = -HE.HY + (r + 0.5) * HE.CELL, v = light ? 0.66 + 0.26 * envV[r * NX + c] : 0.34 + 0.42 * envV[r * NX + c], rr = Math.hypot(x, y * 1.15), al = nofade ? 1 - sm((Math.abs(x) - 17) / 3) : 1 - sm((rr - 4.8) / 4.2);
         if (loc && Math.abs(x) < 3.15 && Math.abs(y) < 3.15) { let q = jg(loc, x, y); if (q > 0.01) v = Math.max(v, 0.2 + 0.78 * q); }
         let g = Math.round(255 * v), i = ((NY - 1 - r) * NX + c) * 4; d[i] = d[i + 1] = d[i + 2] = g; d[i + 3] = Math.round(255 * al);
       }
@@ -5452,7 +5452,7 @@ void main() {
       },
       leave(i) { i.manual = !1; ENVG.visible = !1; },
       tick(i, t, e) {
-        envDraw(null);
+        envDraw(null, !1, !0);
         for (let f = 0; f < 3; f++) i.st.poseUpper(f, 22 * Math.sin(e * 0.35 + f * 2.1));
         let s = '<g font-family="Inter Tight,Segoe UI,sans-serif" paint-order="stroke" stroke-linejoin="round">';
         AXO.forEach((a, k) => {
@@ -5492,7 +5492,7 @@ void main() {
         if (SUNL) { Object.assign(SUNL.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16 }); SUNL.shadow.camera.updateProjectionMatrix(); }
         for (let s = 0; s < 5; s++) i.st.poseLower(s, [0, 0, 0, 0, 0]);
         this.up = [0, 0, 0]; this.x = ENV_X[0];
-        envDraw(null, !0);
+        envDraw(null, !0, !0);
       },
       leave(i) {
         this.cam.t[0] = 0; this.cam.p[0] = 24; envDraw(null);
@@ -5506,9 +5506,9 @@ void main() {
         setRoot(x, 0, ENV_ROT);
         this.cam.t[0] = x * 0.75; this.cam.p[0] = 24 + x * 0.75;
         if (FIELDM) FIELDM.position.set(x, 0, 0);
-        let L = envLocal(x); i.fieldArr = L.F;
+        let L = envLocal(x); if (!this.FL) this.FL = new Float32Array(441); for (let q = 0; q < 441; q++) this.FL[q] = 0.587 + 0.347 * L.F[q]; i.fieldArr = this.FL;
         // upper leaves: turn toward the exposed side; overlap more as exposure rises
-        let spread = Math.round(62 - 46 * tn((L.mean - 0.25) / 0.6, 0, 1)), offs = [-1, 0, 1], perms = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]], best = null;
+        let spread = Math.round(64 - 56 * tn((L.mean - 0.2) / 0.35, 0, 1)), offs = [-1, 0, 1], perms = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]], best = null;
         for (let pm of perms) { let q = pm.map((m, d) => Li(L.az - ENV_ROT + offs[m] * spread - i.st.UB[d])), c = q.reduce((a, d, S) => a + Math.abs(Li(d - this.up[S])), 0); if (!best || c < best.c) best = { q, c }; }
         for (let f = 0; f < 3; f++) { this.up[f] += Li(best.q[f] - this.up[f]) * Math.min(1, dt * 1.4); i.st.poseUpper(f, this.up[f]); }
         // the pusher: ZED skeleton behind the tip, walking while the unit moves
@@ -5521,6 +5521,32 @@ void main() {
     };
     /* ===== end v6 ===== */
     oh.dof.cam = Object.assign({}, oh.dof.cam, { sx: 1470, fov: 26.5 });
+    /* ===== v7: translucent upper-leaf shadows — overlap reads as deeper shade ===== */
+    var PSH = [], PSM = new Ks({ color: 0x10161a, transparent: !0, opacity: 0.34, depthWrite: !1 }), _PM = new Vt(), _LM = new Vt();
+    xe.parts.upper.forEach((list) => list.forEach((m) => {
+      m.castShadow = !1;
+      if (!/SCREEN/.test(m.userData.mat)) return;
+      let sh = new ce(m.geometry, PSM); sh.matrixAutoUpdate = !1; sh.renderOrder = 6; sh.frustumCulled = !1; sh.userData.src = m;
+      xe.world.add(sh); PSH.push(sh);
+    }));
+    function updPlanar() {
+      if (!SUNL) return;
+      let P = SUNL.position, n = P.length() || 1, Lx = P.x / n, Ly = -P.z / n, Lz = Math.max(0.2, P.y / n), h = 0.012;
+      _PM.set(1, 0, -Lx / Lz, (h * Lx) / Lz, 0, 1, -Ly / Lz, (h * Ly) / Lz, 0, 0, 0, h, 0, 0, 0, 1);
+      ROOT.updateMatrix();
+      PSH.forEach((sh) => { sh.visible = ROOT.visible !== !1; _LM.multiplyMatrices(ROOT.matrix, sh.userData.src.matrix); sh.matrix.multiplyMatrices(_PM, _LM); sh.matrixWorldNeedsUpdate = !0; });
+    }
+    var _xeRender = xe.render;
+    xe.render = function () { updPlanar(); _xeRender(); };
+    /* page 6: sweep the upper leaves from spread to stacked so the shade visibly deepens */
+    oh.device.tick = (function (f) { return function (i, t, e) { f.call(this, i, t, e); let k = 0.5 - 0.5 * Math.cos(e * 0.45); k = sm(k); for (let q = 0; q < 3; q++) i.st.poseUpper(q, k * 0.88 * Li(i.st.UB[1] - i.st.UB[q]));
+      let lay = 1 + 2 * k, tr = Math.round(100 * Math.pow(1 - 0.34, lay)), X = 1500, Y = 846;
+      Uo.innerHTML += `<g font-family="Inter Tight,Segoe UI,sans-serif"><rect x="${X - 18}" y="${Y - 34}" width="340" height="132" rx="6" fill="#F1F2F0" fill-opacity=".92"/>
+        <text x="${X}" y="${Y - 8}" font-size="15" font-weight="700" fill="#22272B">${k < 0.5 ? "Leaves spread · soft shade" : "Leaves stacked · deep shade"}</text>
+        <text x="${X}" y="${Y + 12}" font-family="Noto Sans SC,Microsoft YaHei" font-size="13.5" font-weight="600" fill="#5D666C">${k < 0.5 ? "叶片散开 · 柔和漫射" : "叶片叠合 · 浓荫"}</text>
+        ${[1, 2, 3].map((n) => `<rect x="${X + (n - 1) * 64}" y="${Y + 26}" width="58" height="18" fill="#10161a" fill-opacity="${(1 - Math.pow(0.66, n)).toFixed(2)}" stroke="${lay >= n - 0.5 ? "#D2392A" : "none"}" stroke-width="2"/><text x="${X + (n - 1) * 64 + 29}" y="${Y + 60}" text-anchor="middle" font-size="12.5" fill="#5D666C">${n} layer${n > 1 ? "s" : ""}</text>`).join("")}
+        <text x="${X + 200}" y="${Y + 40}" font-size="30" font-weight="300" fill="#22272B">${tr}<tspan font-size="15">%</tspan></text><text x="${X + 200}" y="${Y + 60}" font-size="12.5" fill="#5D666C">light through 透光</text></g>`;
+    }; })(oh.device.tick);
 
     var Rh = xe.parts.lower[0].find((i) => i.userData.side === "left");
     Rh.geometry.computeBoundingBox();
